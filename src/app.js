@@ -16,6 +16,14 @@ app.use(cors({ origin: '*' })); // Adjust for production
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+
+//////////////////// ROUTES
+const teacherRoutes = require('./routes/teacherRoutes');
+app.use('/api/teachers', teacherRoutes);
+
+const notificationRoutes = require('./routes/notificationRoutes');
+app.use('/api/notifications', notificationRoutes);
+
 if (config.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
