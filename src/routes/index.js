@@ -9,7 +9,7 @@ const teacherRoutes = require('./teacherRoutes');
 const applicantRoutes = require('./applicantRoutes');
 const evaluationRoutes = require('./evaluationRoutes');
 const notificationRoutes = require('./notificationRoutes'); 
-
+const evaluationStatusRoutes = require('./evaluationStatusRoutes');
 
 // Mount auth routes under /auth
 router.use('/auth', authRoutes);
@@ -49,5 +49,8 @@ console.log("'/applicants' routes mounted in main router.");
 
 router.use('/evaluations', evaluationRoutes); 
 console.log("'/evaluations' routes mounted in main router.");
+
+router.use('/evaluation-status', evaluationStatusRoutes);
+console.log("'/evaluations-status' routes mounted in main router.");
 
 module.exports = router;
