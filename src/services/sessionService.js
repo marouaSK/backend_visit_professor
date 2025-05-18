@@ -5,7 +5,7 @@ exports.fetchAllSessions = async () => {
   console.log('[sessionService.fetchAllSessions] Fetching all sessions...');
   const { data, error } = await supabase
     .from('session') // Assumes table name is 'session'
-    .select('session_id, session_start, session_end, session_description, admin_id')
+    .select('session_id, session_start, session_end, session_description, admin_id') // admin_id from your session DDL
     .order('session_start', { ascending: false });
   if (error) {
     console.error('[sessionService.fetchAllSessions] Supabase error:', JSON.stringify(error, null, 2));
@@ -54,27 +54,32 @@ exports.calculateSessionStats = async (sessionId) => {
   let totalApplications, acceptedCount, rejectedCount;
   try {
     totalApplications = await countApplicationsByStatus(null);
+    console.log(`[sessionService.calculateSessionStats] totalApplications: ${totalApplications}`);
+
     if (totalApplications === 0) {
       console.log(`[sessionService.calculateSessionStats] No applications for session ${sessionId}, returning zero stats.`);
       return { acceptedPercentage: 0, rejectedPercentage: 0, reportsPercentage: 0, rawCounts: { accepted: 0, rejected: 0, reports: 0, total: 0 } };
     }
+
     acceptedCount = await countApplicationsByStatus('accepted');
+    console.log(`[sessionService.calculateSessionStats] acceptedCount: ${acceptedCount}`);
     rejectedCount = await countApplicationsByStatus('rejected');
+    console.log(`[sessionService.calculateSessionStats] rejectedCount: ${rejectedCount}`);
   } catch (error) {
-      throw error; // Error already logged by helper
+      throw error;
   }
+
 
   let reportCount = 0;
   try {
     console.log(`[sessionService.calculateSessionStats] Starting reportCount calculation for session ${sessionId}`);
-    // Step 1: Get all evaluation_ids linked to the target session via the application table
     const { data: evaluationsInSession, error: evalError } = await supabase
-      .from('evaluation') // Assumes table name 'evaluation'
+      .from('evaluation')
       .select(`
         evaluation_id,
         application!inner ( session_id ) 
-      `) // Assumes FK from evaluation.application_id to application.application_id
-      .eq('application.session_id', sessionId); // Filter on joined application table's session_id
+      `)
+      .eq('application.session_id', sessionId);
 
     if (evalError) {
       console.error(`[sessionService.calculateSessionStats] DB Error fetching evaluations for session ${sessionId} (Step 1 Report Count):`, JSON.stringify(evalError, null, 2));
@@ -85,15 +90,14 @@ exports.calculateSessionStats = async (sessionId) => {
 
     if (evaluationsInSession && evaluationsInSession.length > 0) {
       const evaluationIds = evaluationsInSession.map(ev => ev.evaluation_id);
-      if (evaluationIds.length === 0) { // Should not happen if evaluationsInSession.length > 0, but good check
+      if (evaluationIds.length === 0) {
           console.log('[sessionService.calculateSessionStats] No valid evaluation IDs found to check reports against.');
       } else {
         console.log(`[sessionService.calculateSessionStats] Evaluation IDs for report check: ${evaluationIds.join(', ') || 'None'}`);
-        // Step 2: Count how many of these evaluations have a corresponding visit_report
         const { count: reportsFoundCount, error: reportCheckError } = await supabase
-          .from('visit_report') // Assumes table name 'visit_report'
-          .select('evaluation_id', { count: 'exact', head: true }) // Select any column for count
-          .in('evaluation_id', evaluationIds); // Assumes visit_report.evaluation_id is FK to evaluation.evaluation_id
+          .from('visit_report')
+          .select('evaluation_id', { count: 'exact', head: true })
+          .in('evaluation_id', evaluationIds);
 
         if (reportCheckError) {
           console.error(`[sessionService.calculateSessionStats] DB Error counting visit_reports for evaluation IDs (Step 2 Report Count):`, JSON.stringify(reportCheckError, null, 2));
@@ -106,9 +110,9 @@ exports.calculateSessionStats = async (sessionId) => {
       reportCount = 0;
     }
   } catch (error) {
-    reportCount = 0; // Ensure it's defined on error before return
+    reportCount = 0;
     console.error(`[sessionService.calculateSessionStats] General error in reportCount block for session ${sessionId}:`, JSON.stringify(error, null, 2));
-    throw error; // Propagate error to let global handler respond with 500
+    throw error;
   }
 
   console.log(`[sessionService.calculateSessionStats] Final raw counts for session ${sessionId}: totalApps=${totalApplications}, accepted=${acceptedCount}, rejected=${rejectedCount}, reports=${reportCount}`);
@@ -125,28 +129,23 @@ exports.fetchEvaluatedTeachersForSession = async (sessionId, { search, page, lim
   console.log(`[sessionService.fetchEvaluatedTeachers] Called for session ${sessionId}, search: '${search}', page: ${page}, limit: ${limit}`);
   const offset = (page - 1) * limit;
 
-  // This query assumes your Teacher table is named "Teacher" (quoted, mixed-case)
-  // and evaluation.teacher_id FK is named 'evaluation_teacher_id_fkey'
-  // Adjust if your actual "Teacher" table name is 'teacher' (lowercase) or FK name differs.
   let query = supabase
-    .from('evaluation') // Assumes 'evaluation' table is lowercase
+    .from('evaluation')
     .select(`
       evaluation_id,
       teacher_id, 
       evaluator_id,
       evaluation_status,
       evaluation_date, 
-      evaluation_data,
+      evaluation_data, 
       application!inner (session_id), 
       evaluatedTeacher:"Teacher"!evaluation_teacher_id_fkey (teacher_id, "Full_Name", "Email", "Pic_path"),
       visit_report (visit_report_id, file_path),
       evaluation_score (score)
-    `, { count: 'exact' }) // Important for totalItems calculation
+    `, { count: 'exact' })
     .eq('application.session_id', sessionId);
 
   if (search) {
-    // This requires a database VIEW or function for effective searching on joined "Teacher"."Full_Name" or "Teacher"."Email"
-    // query = query.or(`evaluatedTeacher.Full_Name.ilike.%${search}%,evaluatedTeacher.Email.ilike.%${search}%`); // Placeholder, this syntax won't work directly with Supabase JS client for joined fields
     console.warn("[sessionService.fetchEvaluatedTeachers] Search on joined teacher fields needs custom DB setup (VIEW or FUNCTION). Search term ignored for now.");
   }
 
@@ -161,7 +160,7 @@ exports.fetchEvaluatedTeachersForSession = async (sessionId, { search, page, lim
   console.log(`[sessionService.fetchEvaluatedTeachers] Fetched ${evaluations ? evaluations.length : 0} records for page. Total available: ${count}`);
 
   const formattedTeachers = evaluations.map(ev => {
-    const teacherDetails = ev.evaluatedTeacher; // Alias from select for "Teacher" table join
+    const teacherDetails = ev.evaluatedTeacher;
 
     if (!teacherDetails) {
       console.warn(`[sessionService.fetchEvaluatedTeachers] Evaluation ID ${ev.evaluation_id} in session ${sessionId} is missing 'evaluatedTeacher' data. Teacher ID was ${ev.teacher_id}. Skipping.`);
@@ -171,24 +170,21 @@ exports.fetchEvaluatedTeachersForSession = async (sessionId, { search, page, lim
     let overallScore = 0;
     if (ev.evaluation_score && ev.evaluation_score.length > 0) {
       overallScore = ev.evaluation_score.reduce((sum, item) => sum + (Number(item.score) || 0), 0);
-    } else if (ev.evaluation_data && typeof ev.evaluation_data.overall_score === 'number') { // Fallback if overall_score is in JSONB
+    } else if (ev.evaluation_data && typeof ev.evaluation_data.overall_score === 'number') { 
         overallScore = ev.evaluation_data.overall_score;
     }
 
     return {
       id: teacherDetails.teacher_id,
-      name: teacherDetails["Full_Name"], // Must match column name in "Teacher" table DDL
-      subtitle: teacherDetails["Email"],   // Must match column name in "Teacher" table DDL
-      avatar: teacherDetails["Pic_path"] || null, // Must match column name in "Teacher" table DDL
+      name: teacherDetails["Full_Name"], // Assumes "Full_Name" in "Teacher" table
+      subtitle: teacherDetails["Email"],   // Assumes "Email" in "Teacher" table
+      avatar: teacherDetails["Pic_path"] || null, // Assumes "Pic_path" in "Teacher" table
       score: overallScore,
       evaluation_id: ev.evaluation_id,
       visit_report_id: ev.visit_report ? ev.visit_report.visit_report_id : null,
       report_file_path: ev.visit_report ? ev.visit_report.file_path : null,
-      // Optional additional data:
-      // evaluation_status: ev.evaluation_status,
-      // evaluation_date_text: ev.evaluation_date, // 'evaluation_date' from DB is TEXT
     };
-  }).filter(Boolean); // Removes any nulls from map if teacherDetails was missing
+  }).filter(Boolean);
 
   return {
     totalItems: count || 0,
