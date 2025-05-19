@@ -1,4 +1,4 @@
-const { supabase } = require('../config/db');
+const  supabase  = require('../config/db');
 
 exports.getAllTeachers = async () => {
   const { data, error } = await supabase
