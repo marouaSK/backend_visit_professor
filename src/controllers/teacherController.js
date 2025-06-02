@@ -6,11 +6,11 @@ exports.getAllTeachers = async (req, res, next) => {
         const teachers = await teacherService.getAllTeachers();
         res.json(teachers);
     } catch (error) {
-        console.error('Error in getAllTeachers controller:', error); // Service already logs
-        res.status(500).json({ message: error.message || 'Internal server error' });
-        next(error); // Pass to global error handler
+        console.error('Error in getAllTeachers controller:', error);
+        next(error); // ✅ ONLY forward it — let global error handler decide what to do
     }
 };
+
 
 exports.searchTeachers = async (req, res, next) => {
     try {
