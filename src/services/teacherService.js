@@ -49,4 +49,14 @@ exports.getFullTeacherProfileById = async (id) => {
     return data;
 };
 
-// If you have getAllTeachers or other functions, add similar logs.
+exports.getAllTeachers = async () => {
+  const { data, error } = await supabase
+    .from('Teacher')
+    .select('Full_Name, teacher_bio, Pic_path');
+
+  if (error) {
+    throw new Error(`Supabase error: ${error.message}`);
+  }
+
+  return data;
+};
